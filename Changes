@@ -29,9 +29,16 @@ Revision history for Apache::PSP
   - Apache::PSP now declares 404 errors when a file is not found (instead 
     of red text and 200)
   - minor bug fixes and reformatting
-  - started base tag POD documentation in Template::PSP
 
-0.51  28 Oct 2002
-  - fixed setpvar bug (thanks Scott)
-  - changed HTML::Parser behavior to add performance (thanks again Scott)
-  
+0.6  XX Dec 2002 (not publicly released)
+  - replaced VEP-reliant code with new routines to fill
+    %CGI, %QUERY, and %COOKIE hashes
+    
+0.7  29 Jan 2003
+  - replaced Cwd::abs_path with built-in abs_path for
+    more intuitive includes (thanks again to Scott Kiehn),
+    plus ~/foo.psp shortcut to $ENV{DOCUMENT_ROOT}
+  - fixed error in HEAD processing which resulted in HEAD
+    requests generating a full page
+  - improved recovery from in-page fatal errors by causing interpreter 
+    to restart after these errors

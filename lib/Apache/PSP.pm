@@ -7,7 +7,7 @@ use Template::PSP;
 use Apache::Constants qw( :common );
 use vars qw($VERSION);
 
-$VERSION = 0.5;
+$VERSION = 0.7;
 
 sub handler
 {
@@ -19,16 +19,22 @@ sub handler
     return NOT_FOUND;
   }
   
+  # send success headers
+  $r->content_type('text/html');
+  $r->send_http_header();
+  
+  # return only headers for HEAD requests
+  if ( $r->header_only )
+  {
+    return OK;
+  }
+  
   # generate the page code using the provided file
   my $page_code;
   eval { $page_code = Template::PSP::pspload($r->filename, undef, 1); };
   
   if ($page_code)
   {
-    # send success headers
-    $r->content_type('text/html');
-    $r->send_http_header();
-    
     # execute the page generation code
     eval
     {
@@ -38,17 +44,18 @@ sub handler
     if ($@)
     {
       print qq{<font color="red"><tt>$@</tt></font>\n};
+      
+      # terminate this Apache process to avoid intermediate state problems
+      # (temporary until a full cleanup handler is available)
+      $r->child_terminate;
     }
   }
   else
   {
-    # send success headers
-    $r->content_type('text/html');
-    $r->send_http_header();
-
     # log the failure 
     $r->log_reason("Could not load page", $r->filename);
     print qq{<font color="red"><tt>Can't load page. $@</tt></font>\n};
+    print qq{<p>Process $$ will be restarted.</p>\n};
 
     # terminate this Apache process to avoid intermediate state problems
     # (temporary until a full cleanup handler is available)

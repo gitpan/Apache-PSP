@@ -4,7 +4,6 @@ require 5.005;
 
 use strict;
 
-use Cwd;
 use Carp;
 
 use HTML::TokeParser;
@@ -12,25 +11,27 @@ use IO::Scalar;
 use DBI; 
 use vars qw($VERSION);
 
-$VERSION = 0.51;
+$VERSION = 0.7;
 
-# %tags - list of special HTML tags defined in Template.pm
+# %tags        - list of special HTML tags defined in Template.pm
 # %global_tags - list of HTML tags, accessible by all pages
 #
-# $page - scalar reference to script being created from template
-# $frags - html fragments
+# $page       - scalar reference to script being created from template
+# $frags      - html fragments
 # $outputflag - process '$' variables
-# $perlflag - perl code
-# $package - template is being placed in $package
-# %tagdata - data associated with tag being created
-# %Cache - file time stamps for loaded psp pages
-# %Handler - pointers to subroutines for psp pages
-# %type - subroutines for handling output types
+# $perlflag   - perl code
+# $package    - template is being placed in $package
+# %tagdata    - data associated with tag being created
+# %Cache      - file time stamps for loaded psp pages
+# %Handler    - pointers to subroutines for psp pages
+# %type       - subroutines for handling output types
 
 use vars qw (%tags %global_tags $page $parsefile $frags $outputflag $perlflag
 	     $handlerflag $package %tagdata %Cache %Handler %type $lineno
 	     $top_package $escapeflag $space
 	    );
+
+use vars qw(%QUERY %CGI %FILENAMES %AUTH %COOKIE);
 
 %tags = map {$_ => 1} 
 	( "tag", "loop", "if", "else", "elseif", "perl", "fetch", "output", 
@@ -70,6 +71,37 @@ sub getpvar
   return ${$top_package . "::" . $item};
 }
 
+# derive the absolute path based on a
+# relative filename and the current file
+# 
+# thanks to Scott Kiehn
+#
+sub abs_path
+{
+  my $file = shift(@_);
+  
+  my $prefix = substr($file, 0, 1);
+  
+  # if this is not an absolute path, 
+  # create an absolute path from it
+  if ($prefix ne '/')          
+  {
+    # check for document root abbreviation
+    if ($prefix eq '~')     
+    {
+      $file = substr($file, 1);
+      $file = $ENV{DOCUMENT_ROOT} . $file;
+    }
+    # otherwise use relative path based on the current file
+    else                        
+    {
+      $file = substr( $parsefile, 0, rindex($parsefile, '/') ) . "/" . $file;
+    }
+  }
+
+  return $file;
+}
+
 
 ################################################################
 # pspload
@@ -90,24 +122,17 @@ sub pspload
   if (!ref($data))
   {
     # data is a file name, not the code 
-    # This data may have . ../.. or some other nonsense
+    # This file name may have . ../.. or a relative path
     # that makes it not uniquely defined
-    if (substr($data,0,1) ne "/")
-    {
-      $file = Cwd::abs_path($data);
-    }
-    else
-    {
-      $file = $data;
-    }
+    $file = abs_path($data);
   
     if (newfile($file))
     {
       # we've not loaded the file before, or it
-      # has changed on disk.  Load it up!
+      # has changed on disk.  Load it.
       if (!defined($pkg))
       {
-	$pkg = valid_package_name($file);
+        $pkg = valid_package_name($file);
       }
       $parseflag = 1;
     }
@@ -155,9 +180,7 @@ sub pspload
     if ($topflag)
     {
       append_page('$Template::PSP::top_package = ' . $pkg . ";\n");
-      append_page('my $cgi = CGI::Minimal->new;' . "\n");
-      append_page('%QUERY = map { my $x = [$cgi->param($_)]; $_ => scalar(@{$x}) > 1 ? \@{$x} : $$x[0] } ($cgi->param);' . "\n");
-    }
+	    append_page('Template::PSP::set_hashes(*CGI, *COOKIE, *QUERY, *FILENAMES, *AUTH);' . "\n");    }
     else
     {
       append_page(
@@ -268,6 +291,41 @@ sub append_page
   ${$page} .= join(" ", @_);
 }
 
+sub set_hashes (%%%%%)
+{
+  local(*CGI, *COOKIE, *QUERY, *FILENAMES, *AUTH) =  @_;
+  
+  # duplicate environment variables in %CGI
+  %CGI = %ENV;
+  
+  # fill %QUERY with query values
+  my $cgi = CGI::Minimal->new();
+  %QUERY = map { my $x = [$cgi->param($_)]; $_ => scalar(@{$x})
+ > 1 ? \@{$x} : $$x[0] } ($cgi->param);
+  
+  # process cookies for this request
+  my @cookies = split(/; ?/,$ENV{HTTP_COOKIE});
+  foreach my $item (@cookies) 
+  {
+    my ($name, $value) = split('=', $item);
+    $COOKIE{$name} = $value;
+  }
+  
+  # leave authorization for another time
+#  if ($ENV->{HTTP_AUTHORIZATION}) 
+#  {
+#    my @list = split(/ /, $ENV{HTTP_AUTHORIZATION});
+#    if (lc($list[0]) eq "basic") 
+#    {
+#      my $encoded = pop(@list);
+#      my $decoded = decode_base64($encoded);
+#  
+#      ($AUTH->{username}, $AUTH->{password}) = split(/:/, $decoded);
+#    }
+#  }
+  
+  return 1;
+}
 
 #########################################
 # Template::PSP::Parser
@@ -285,7 +343,6 @@ sub start
 
   if ($escapeflag || $tagname eq $tagdata{name} || $perlflag)
   {
-#   text($text);
     text($space . $text);
     $space = "";
     return;
@@ -340,7 +397,6 @@ sub start
     return;
   }
   
-# text($text);
   text($space . $text);
   $space = "";
   return;
@@ -358,7 +414,6 @@ sub end
       ($handlerflag && $tagname ne "handler") ||
       (!$handlerflag && $perlflag && $tagname ne "perl"))
   {
-#   text($text);
     text($space . $text);
     $space = "";
     return;
@@ -383,7 +438,6 @@ sub end
     return;
   }
   
-# text($text);
   text($space . $text);
   $space = "";
   return;
@@ -396,7 +450,6 @@ sub comment
   my ($text) = @_;
   default($text);
 
-# text($text);
   text($space . $text);
   $space = "";
   return;
@@ -743,28 +796,37 @@ sub output_ {
     $outputflag--;
 }
 
-sub pspescape {
-    $escapeflag++;
+sub pspescape 
+{
+  $escapeflag++;
 }
 
-sub pspescape_ {
-    $escapeflag--;
+sub pspescape_ 
+{
+  $escapeflag--;
 }
 
-sub include {
-    my ($attr) = @_;
-   
-    my $file = eval "\"$attr->{file}\"";
-    if (substr($file, 0, 1) ne '/')
-    {
-      $file = Cwd::abs_path("$file");
-    }
+sub include 
+{
+  my ($attr) = @_;
+ 
+  my $file     = eval qq{"$attr->{file}"};
+  my $relative = eval qq{"$attr->{relative}" || "$attr->{rel}"};
+  
+  if ($relative)
+  {
+    $file = abs_path("$file");
+  }
 
-    if (! -f $file) {
-	croak "Cannot include file '", $attr->{file}, "' while processing $parsefile\n";
-    }
-    pspload($file);
-    append_page('&{&Template::PSP::pspload(' . "'$file'" . ')}();' . "\n");
+  if (! -f $file) 
+  {
+    croak "Cannot include file '", $attr->{file}, 
+          "' while processing $parsefile\n";
+  }
+  
+  pspload($file);
+  
+  append_page('&{&Template::PSP::pspload(' . "'$file'" . ')}();' . "\n");
 }
 
 sub include_ {}
