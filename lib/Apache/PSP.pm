@@ -7,24 +7,39 @@ use Template::PSP;
 use Apache::Constants qw( :common );
 use vars qw($VERSION);
 
-$VERSION = 0.31;
+$VERSION = 0.4;
 
-sub handler {
-  my $r = shift;
-
-  $r->content_type('text/html');
-  $r->send_http_header;
-
+sub handler
+{
+  my $r = shift(@_);
+  
+  # generate the page code using the provided file
   my $page_code = Template::PSP::pspload($r->filename);
   
-  unless ($page_code) 
+  if ($page_code)
   {
+    # send success headers
+    $r->content_type('text/html');
+    $r->send_http_header();
+    
+    # execute the page generation code
+    eval
+    {
+      &$page_code();
+    };
+    
+    if ($@)
+    {
+      print qq{<font color="red"><tt>$@</tt></font>\n};
+    }
+  }
+  else
+  {
+    # log the failure and return a server error
     $r->log_reason("Could not load page", $r->filename);
     return SERVER_ERROR;
   };
-
-  &$page_code();
-
+  
   return OK;
 }
 

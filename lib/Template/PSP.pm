@@ -12,7 +12,7 @@ use IO::Scalar;
 use DBI; 
 use vars qw($VERSION);
 
-$VERSION = 0.31;
+$VERSION = 0.4;
 
 # %tags - list of special HTML tags defined in Template.pm
 # %global_tags - list of HTML tags, accessible by all pages
@@ -36,31 +36,38 @@ use vars qw (%tags %global_tags $page $parsefile $frags $outputflag $perlflag
 	( "tag", "loop", "if", "else", "elseif", "perl", "fetch", "output", 
 	"handler", "return", "include", "pspescape" );
 
-sub cleanup {
+sub cleanup
+{
+  no strict 'refs';
+  push(@{$top_package . "::cleanup_handler"}, shift);
+}
+
+sub cleanup_handler
+{
+  my $handlers = shift(@_);
+  
+  for (my $i=0;$handlers->[$i];$i++)
+  {
+    &{$handlers->[$i]}();
+  }
+}
+
+sub setpvar
+{
+  my $item = shift;
+  my $value = shift;
+  if ($item)
+  {
     no strict 'refs';
-    push(@{$top_package . "::cleanup_handler"}, shift);
+    ${$top_package . "::" . $item} = $value;
+  }
 }
 
-sub cleanup_handler {
-    my $handlers = shift;
-    for (my $i=0;$handlers->[$i];$i++) {
-	&{$handlers->[$i]}();
-    }
-}
-
-sub setpvar {
-   my $item = shift;
-   my $value = shift;
-   if ($item) {
-     no strict 'refs';
-     ${$top_package . "::" . $item} = $value;
-   }
-}
-
-sub getpvar {
-   my $item = shift;
-   no strict 'refs';
-   return ${$top_package . "::" . $item};
+sub getpvar
+{
+  my $item = shift;
+  no strict 'refs';
+  return ${$top_package . "::" . $item};
 }
 
 
@@ -72,161 +79,190 @@ sub getpvar {
 # name passed to pspload through abs_path to be certain that
 # the file name is uniquely defined.
 
-sub pspload {
-    my ($data, $pkg, $topflag) = @_;
-    my $parseflag = 0;
-    my $handler;
-    my $file;
-    my ($oldpage, $oldpkg, $oldfrags, $pg, $oldfile, $oldlineno);
+sub pspload
+{
+  my ($data, $pkg, $topflag) = @_;
+  my $parseflag = 0;
+  my $handler;
+  my $file;
+  my ($oldpage, $oldpkg, $oldfrags, $pg, $oldfile, $oldlineno);
 
-    if (!ref($data)) {
-	# data is a file name, not the code 
-	# This data may have . ../.. or some other nonsense
-	# that makes it not uniquely defined
-	if (substr($data,0,1) ne "/") {
-	    $file = Cwd::abs_path($data);
- 	} else {
-	    $file = $data;
-	}
-
-	if (newfile($file)) {
-	    # we've not loaded the file before, or it
-	    # has changed on disk.  Load it up!
-            if (!defined($pkg)) {
-	        $pkg = valid_package_name($file);
-            }
-	    $parseflag = 1;
-	} else {
-	    $handler = $Handler{$file};
-	}
-    } else {
-	$parseflag = 1;
-	$file = $ENV{SCRIPT_FILENAME};
+  if (!ref($data))
+  {
+    # data is a file name, not the code 
+    # This data may have . ../.. or some other nonsense
+    # that makes it not uniquely defined
+    if (substr($data,0,1) ne "/")
+    {
+      $file = Cwd::abs_path($data);
     }
-
-    if ($parseflag) {
-
-	my $parser;
-	my $token;
-
-	# we need to create a temporary place
-	# to store the page as it is building it
-	$oldlineno = $lineno;
-	$oldfile = $parsefile;
-	$oldfrags = $frags;
-	$oldpage = $page;
-	$oldpkg = $package;
-	$frags = 0;
-	$lineno = 1;
-	$package = $pkg;
-	$page = \$pg;
-	$parsefile = $file;
-
-	my $eval =  "package $pkg;\n" .
-	     '*getpvar = \&Template::PSP::getpvar;' . "\n" .
-	     '*setpvar = \&PSP::setpvar;' . "\n" .
-	     '*cleanup = \&Template::PSP::cleanup;' . "\n" .
-	     'use VelociGen::VEP;' . "\n" .
-	     'use vars qw(%QUERY %CGI %FILENAMES %AUTH %COOKIE);' . "\n";
-
-	eval $eval;
-
-	append_page("package $pkg;\n");
-	append_page("no strict;\n");
-	append_page("sub {\n");
-	if ($topflag) {
-            append_page('$Template::PSP::top_package = ' . $pkg . ";\n");
-	    append_page('&VelociGen::VEP::init(*CGI, *COOKIE, *QUERY, *FILENAMES, *AUTH);' . "\n");
-	} else {
-	    append_page(
-		'*QUERY = *{$Template::PSP::top_package . "::QUERY"};' . "\n" .
-	        '*CGI = *{$Template::PSP::top_package . "::CGI"};' . "\n" .
-	        '*FILENAMES = *{$Template::PSP::top_package . "::FILENAMES"};' . "\n" .
-	        '*AUTH = *{$Template::PSP::top_package . "::AUTH"};' . "\n" .
-	        '*COOKIE = *{$Template::PSP::top_package . "::COOKIE"};' . "\n");
-	}
-
-	$parser = HTML::Parser->new( api_version => 3,
-				     start_h => [\&start, "tagname,attr,text"],
-				     end_h => [\&end, "tagname,text"],
-				     text_h => [\&text, "text,is_cdata"],
-				     comment_h => [\&comment, "text"],
-				     default_h => [\&default, "text"]
-				   );
-
-	$parser->xml_mode(1);
+    else
+    {
+      $file = $data;
+    }
+  
+    if (newfile($file))
+    {
+      # we've not loaded the file before, or it
+      # has changed on disk.  Load it up!
+      if (!defined($pkg))
+      {
+	$pkg = valid_package_name($file);
+      }
+      $parseflag = 1;
+    }
+    else
+    {
+      $handler = $Handler{$file};
+    }
+  }
+  else
+  {
+    $parseflag = 1;
+    $file = $ENV{SCRIPT_FILENAME};
+  }
+  
+  if ($parseflag)
+  {
+    my $parser;
+    my $token;
+    
+    # we need to create a temporary place
+    # to store the page as it is building it
+    $oldlineno = $lineno;
+    $oldfile = $parsefile;
+    $oldfrags = $frags;
+    $oldpage = $page;
+    $oldpkg = $package;
+    $frags = 0;
+    $lineno = 1;
+    $package = $pkg;
+    $page = \$pg;
+    $parsefile = $file;
+    
+    my $eval =  "package $pkg;\n" .
+		'*getpvar = \&Template::PSP::getpvar;' . "\n" .
+	        '*setpvar = \&PSP::setpvar;' . "\n" .
+		'*cleanup = \&Template::PSP::cleanup;' . "\n" .
+		'use VelociGen::VEP;' . "\n" .
+		'use vars qw(%QUERY %CGI %FILENAMES %AUTH %COOKIE);' . "\n";
+    
+    eval $eval;
+    
+    append_page("package $pkg;\n");
+    append_page("no strict;\n");
+    append_page("sub {\n");
+    if ($topflag)
+    {
+      append_page('$Template::PSP::top_package = ' . $pkg . ";\n");
+      append_page('&VelociGen::VEP::init(*CGI, *COOKIE, *QUERY, *FILENAMES, *AUTH);' . "\n");
+    }
+    else
+    {
+      append_page(
+	  '*QUERY = *{$Template::PSP::top_package . "::QUERY"};' . "\n" .
+	  '*CGI = *{$Template::PSP::top_package . "::CGI"};' . "\n" .
+	  '*FILENAMES = *{$Template::PSP::top_package . "::FILENAMES"};' . "\n" .
+	  '*AUTH = *{$Template::PSP::top_package . "::AUTH"};' . "\n" .
+	  '*COOKIE = *{$Template::PSP::top_package . "::COOKIE"};' . "\n");
+    }
+    
+    $parser = HTML::Parser->new( api_version => 3,
+				 start_h => [\&start, "tagname,attr,text"],
+				 end_h => [\&end, "tagname,text"],
+				 text_h => [\&text, "text,is_cdata"],
+				 comment_h => [\&comment, "text"],
+				 default_h => [\&default, "text"]
+			       );
+    
+    $parser->xml_mode(1);
 #	$parser->strict_names(1);
-
-	if (ref($data)) {
-	    $parser->parse($$data) || croak "$! in pspload()";
-	}
-	else {
-	    $parser->parse_file($data) || croak "$! while loading file '$data'";
-	}
-
-	if ($topflag) {
-	    append_page('&Template::PSP::cleanup_handler(\@cleanup_handler);' . "\n");
-	    append_page('select(STDOUT);' . "\n");
-        }
-      append_page("return 1;\n");
-      append_page("}\n");
-
-      $handler = eval $$page;
-
-      if ($@) {
-	      psperror($file);
-      }
-      if ($file) {
-        $Handler{$file} = $handler;
-      }
-      no strict 'refs';
-
-        # restore globals
-        $lineno = $oldlineno;
-        $parsefile = $oldfile;
-        $frags = $oldfrags;
-        $page = $oldpage;
-        $package = $oldpkg;
+    
+    if (ref($data))
+    {
+      $parser->parse($$data) || croak "$! in pspload()";
     }
-
-    # import export_tags from loaded page
-    if (defined($package)) {
-        if (!defined($pkg)) {
-	    $pkg = valid_package_name($file);
-        }
-        no strict 'refs';
-        foreach my $tag (keys %{$pkg . "::export_tags"}) {
-	    ${$package . "::custom_tags"}{$tag} = ${$pkg . "::export_tags"}{$tag};
-        }
+    else
+    {
+      $parser->parse_file($data) || croak "$! while loading file '$data'";
     }
+    
+    if ($topflag)
+    {
+      append_page('&Template::PSP::cleanup_handler(\@cleanup_handler);' . "\n");
+      append_page('select(STDOUT);' . "\n");
+    }
+    append_page("return 1;\n");
+    append_page("}\n");
+    
+    $handler = eval $$page;
+    
+    if ($@)
+    {
+      psperror($file);
+    }
+    
+    if ($file)
+    {
+      $Handler{$file} = $handler;
+    }
+    
+    no strict 'refs';
+    
+    # restore globals
+    $lineno = $oldlineno;
+    $parsefile = $oldfile;
+    $frags = $oldfrags;
+    $page = $oldpage;
+    $package = $oldpkg;
+  }
 
-    return $handler;
+  # import export_tags from loaded page
+  if (defined($package))
+  {
+    if (!defined($pkg))
+    {
+      $pkg = valid_package_name($file);
+    }
+    
+    no strict 'refs';
+    
+    foreach my $tag (keys %{$pkg . "::export_tags"})
+    {
+      ${$package . "::custom_tags"}{$tag} = ${$pkg . "::export_tags"}{$tag};
+    }
+  }
+
+  return $handler;
 }
 
 
 # displays psp page with line numbers
-sub pspdebug {
-    no strict 'refs';
-    my @lines = split("\n", $$page);
-    for (my $i = 1; $i <= $#lines + 1;$i++) {
-	print STDERR "<$i> " . $lines[$i-1] . "\n";
-    }
+sub pspdebug
+{
+  no strict 'refs';
+  my @lines = split("\n", $$page);
+  for (my $i = 1; $i <= $#lines + 1;$i++)
+  {
+    print STDERR "<$i> " . $lines[$i-1] . "\n";
+  }
 }
 
 # output error
-sub psperror {
-    my $tag = shift;
+sub psperror
+{
+  my $tag = shift;
 
-#    pspdebug();
-#    croak "failed when processing " . $tagdata{name} . ": $@\n";
-    croak $@;
+  #    pspdebug();
+  #    croak "failed when processing " . $tagdata{name} . ": $@\n";
+  croak $@;
 }
 
-
 # appends code to page
-sub append_page {
-    no strict 'refs';
-    ${$page} .= join(" ", @_);
+sub append_page
+{
+  no strict 'refs';
+  ${$page} .= join(" ", @_);
 }
 
 
@@ -234,130 +270,163 @@ sub append_page {
 # Template::PSP::Parser
 # used to process psp pages using HTML::TokeParser
 
-sub start {
-    my $tagname = lc(shift);
-    my $attr = shift;
-    my $text = shift;
+sub start
+{
+  my $tagname = lc(shift);
+  my $attr = shift;
+  my $text = shift;
 
-    no strict 'refs';
+  no strict 'refs';
 
-    default($text);
+  default($text);
 
-    if ($escapeflag || $tagname eq $tagdata{name} || $perlflag) {
-	text($text);
-	return;
-    }
-
-    # start tag
-    if ($tags{$tagname}) {
-	no strict 'refs';
-	&{$tagname}($attr);
-	return;
-    }
-
-    my $fn = ${$package . "::custom_tags"}{$tagname} || $global_tags{$tagname};
-
-    if ($fn) {
-	    
-	append_page('&' . $fn . '({');
-	foreach my $item (keys %{$attr}) {
-	    my $s;
-	    my $s2;
-	    my $arg = ${$attr}{$item};
-	
-            if (($s2 = substr($arg,0,1)) eq '$' || ($s2 eq "\\" && 
-			(($s = substr($arg,1,1)) eq '@' ||
-			$s eq '%' ||
-			$s eq '&'))) {
-	        # don't quote because arg is a reference
-		append_page("'$item'", '=>', $arg . ',');
-	    } else {
-		if ($arg !~ /^@/) {
-		    $arg =~ s/@/\\@/gs;
-		}
-		$arg =~ s/{/\\{/g;
-                $arg =~ s/}/\\}/g;
-		append_page("'$item'", '=>', 'qq{' . $arg . '},');
-	    }
-        }
-        append_page('});'  . "\n");
-        return;
-    }
-    
+  if ($escapeflag || $tagname eq $tagdata{name} || $perlflag)
+  {
     text($text);
     return;
+  }
+
+  # start tag
+  if ($tags{$tagname})
+  {
+    no strict 'refs';
+    &{$tagname}($attr);
+    return;
+  }
+
+  my $fn = ${$package . "::custom_tags"}{$tagname} || $global_tags{$tagname};
+
+  if ($fn)
+  {
+    append_page('&' . $fn . '({');
+    
+    foreach my $item (keys %{$attr})
+    {
+      my $s;
+      my $s2;
+      my $arg = ${$attr}{$item};
+      $s2 = substr($arg,0,1);
+      $s = substr($arg,1,1);
+      
+      if (($s2 eq '$') ||
+	  (($s2 eq "\\") &&
+	   ($s eq '@') ||
+	   ($s eq '%') ||
+	   ($s eq '&')
+	  )
+	 )
+      {
+	# don't quote because arg is a reference
+	append_page("'$item'", '=>', $arg . ',');
+      }
+      else
+      {
+	if ($arg !~ /^@/)
+	{
+	  $arg =~ s/@/\\@/gs;
+	}
+	$arg =~ s/{/\\{/g;
+	$arg =~ s/}/\\}/g;
+	append_page("'$item'", '=>', 'qq{' . $arg . '},');
+      }
+    }
+    
+    append_page('});'  . "\n");
+    return;
+  }
+  
+  text($text);
+  return;
 }
 
-sub end {
-    my $tagname = lc(shift);
-    my $text = shift;
+sub end
+{
+  my $tagname = lc(shift);
+  my $text = shift;
 
-    default($text);
+  default($text);
 
-    if (($escapeflag && $tagname ne "pspescape") || $tagname eq $tagdata{name} || ($handlerflag && $tagname ne "handler") || (!$handlerflag && $perlflag && $tagname ne "perl")) {
-	text($text);
-	return;
-    }
-
-    if ($tags{$tagname}) {
-	no strict 'refs';
-	&{$tagname . "_"}();
-	return;
-    }
-
-    no strict 'refs';
-
-    my $fn = $global_tags{$tagname . "_"} || ${$package . "::custom_tags"}{$tagname . "_"};
-
-    if ($fn) {
-	no strict 'refs';
-	append_page('&' . $fn .'();' . "\n");
-	return;
-    }
-	
+  if (($escapeflag && $tagname ne "pspescape") ||
+      ($tagname eq $tagdata{name}) ||
+      ($handlerflag && $tagname ne "handler") ||
+      (!$handlerflag && $perlflag && $tagname ne "perl"))
+  {
     text($text);
     return;
-}
+  }
 
-sub comment {
-    my ($text) = @_;
-    default($text);
-
-    if ($perlflag || $escapeflag) {
-	text($text);
-    }
+  if ($tags{$tagname})
+  {
+    no strict 'refs';
+    &{$tagname . "_"}();
     return;
+  }
+
+  no strict 'refs';
+
+  my $fn = $global_tags{$tagname . "_"} ||
+           ${$package . "::custom_tags"}{$tagname . "_"};
+
+  if ($fn)
+  {
+    no strict 'refs';
+    append_page('&' . $fn .'();' . "\n");
+    return;
+  }
+  
+  text($text);
+  return;
 }
 
-sub default {
-    my ($text) = @_;
-    $lineno += count_lines($text);
+# for comments,
+# display the comment as provided
+sub comment
+{
+  my ($text) = @_;
+  default($text);
+
+  text($text);
+  
+  return;
 }
-    
+
+sub default
+{
+  my ($text) = @_;
+  $lineno += count_lines($text);
+}
+
 # handles all text that is read by the parser
-sub text {
-    my ($text) = @_;
+sub text
+{
+  my ($text) = @_;
 
-    if (!$escapeflag && $text =~ /^\s*$/s) {
-      return;
-    }
-    if ($perlflag) {
-	append_page($text);
-    } elsif ($outputflag) {
-	$text =~ s/\@/\\\@/g;
-	append_page('print qq{' . $text . '};' . "\n");
-    } else {
-	no strict 'refs';
-	$frags++;
-	${$package . '::__html_' . $frags} = $text;
-        append_page("print \$" . $package . '::__html_' . $frags . ";\n");;
-    }
+  if (!$escapeflag && $text =~ /^\s*$/s)
+  {
+    return;
+  }
+  if ($perlflag)
+  {
+    append_page($text);
+  }
+  elsif ($outputflag)
+  {
+    $text =~ s/\@/\\\@/g;
+    append_page('print qq{' . $text . '};' . "\n");
+  }
+  else
+  {
+    no strict 'refs';
+    $frags++;
+    ${$package . '::__html_' . $frags} = $text;
+    append_page("print \$" . $package . '::__html_' . $frags . ";\n");;
+  }
 }
 
 
 #########################################
 # BEGIN TAG DEFINITIONS
-
+#
 # The tag TAG allows building of non-looping tags.
 # three parameters can be passed:
 # name - name of tag to create
@@ -367,142 +436,157 @@ sub text {
 #     evaluate variables that begin with '$' 
 
 
-sub tag {
-    my ($attr) = @_;
-    my (@attrs) = split(/,/, $attr->{accepts});
+sub tag
+{
+  my ($attr) = @_;
+  my (@attrs) = split(/,/, $attr->{accepts});
 
-    # Try to hide global variables for building tag in
-    # %Template::PSP::tagdata
+  # Try to hide global variables for building tag in
+  # %Template::PSP::tagdata
 
-    $tagdata{body} = $attr->{body};
-    if ($tagdata{body}) {
-        push(@attrs, "body");
-    }
-    $tagdata{global} = $attr->{global};
-    $tagdata{name} = $attr->{name};
-    $tagdata{oldpage} = $page;
-    $page = \$tagdata{page};
+  $tagdata{body} = $attr->{body};
+  if ($tagdata{body})
+  {
+    push(@attrs, "body");
+  }
+  $tagdata{global} = $attr->{global};
+  $tagdata{name} = $attr->{name};
+  $tagdata{oldpage} = $page;
+  $page = \$tagdata{page};
 
-    # For each new tag, create a Perl function 
-    # which will be called when the start tag is 
-    # encountered
+  # For each new tag, create a Perl function 
+  # which will be called when the start tag is 
+  # encountered
 
-    append_page('package', $package . ";\n");
-    append_page("no strict 'refs';\n");
-    append_page('sub', $tagdata{name}, "{\n");
-    append_page('my ($attr) = @_;' . "\n");
+  append_page('package', $package . ";\n");
+  append_page("no strict 'refs';\n");
+  append_page('sub', $tagdata{name}, "{\n");
+  append_page('my ($attr) = @_;' . "\n");
+  
+  foreach my $item (@attrs)
+  {
+    append_page('my', "\$" . $item, "=", '$attr->{' . $item . "};\n");
+  }
+
+  append_page("#line $lineno $parsefile\n"); 
+
+  # If the tag we are defining will have a body,
+  # redirect the output from processing the body
+  # to a Perl scalar ($body).  Create a Perl function
+  # which will be called when the end tag is encountered
+
+  if ($tagdata{body})
+  {
+    # save all variables
+    append_page('push(@Template::PSP::attrs, $attr);' . "\n");
     
-    foreach my $item (@attrs) {
-	append_page('my', "\$" . $item, "=", '$attr->{' . $item . "};\n");
+    # Here's a nasty Perl trick for redirecting STDOUT to a scalar 
+    # called $body
+    
+    append_page('push(@Template::PSP::oldfh, select(IO::Scalar->new_tie(\$attr->{body})));' . "\n");
+    
+    append_page('if ($attr->{"/"} eq "/") {' . "\n");
+    append_page('&' . $tagdata{name} . '_();' . "\n");
+    append_page('}' . "\n");
+    append_page('}' . "\n");
+    
+    # Below is the creation of the Perl sub to be called after
+    # we encounter the end tag.  Tags that have a body cannot
+    # be processed until after the output from the body has
+    # been obtained and stored in the scalar $body.  Tag
+    # processing is thus placed after the end tag has been
+    # encountered.
+    
+    append_page('sub', $tagdata{name} . '_',  '{' . "\n");
+    
+    # restore variables
+    append_page('my $attr = pop(@Template::PSP::attrs);' . "\n");
+    foreach my $item (@attrs)
+    {
+      append_page('my', "\$" . $item, "=", '$attr->{' . $item . '};' . "\n");
     }
-
-    append_page("#line $lineno $parsefile\n"); 
-
-    # If the tag we are defining will have a body,
-    # redirect the output from processing the body
-    # to a Perl scalar ($body).  Create a Perl function
-    # which will be called when the end tag is encountered
-
-    if ($tagdata{body}) {
-
-	# save all variables
-	append_page('push(@Template::PSP::attrs, $attr);' . "\n");
-
-	# Here's a nasty Perl trick for redirecting STDOUT to a scalar 
-	# called $body
-	
-	append_page('push(@Template::PSP::oldfh, select(IO::Scalar->new_tie(\$attr->{body})));' . "\n");
-
-	append_page('if ($attr->{"/"} eq "/") {' . "\n");
-	append_page('&' . $tagdata{name} . '_();' . "\n");
-	append_page('}' . "\n");
-	append_page('}' . "\n");
-
-	# Below is the creation of the Perl sub to be called after
-	# we encounter the end tag.  Tags that have a body cannot
-	# be processed until after the output from the body has
-	# been obtained and stored in the scalar $body.  Tag
-	# processing is thus placed after the end tag has been
-	# encountered.
-
-	append_page('sub', $tagdata{name} . '_',  '{' . "\n");
-	
-	# restore variables
-	append_page('my $attr = pop(@Template::PSP::attrs);' . "\n");
-	foreach my $item (@attrs) {
-	    append_page('my', "\$" . $item, "=", '$attr->{' . $item . '};' . "\n");
-	}
-
-	# stop sending STDOUT to scalar
-	append_page('close(select(pop(@Template::PSP::oldfh)));' . "\n");
-    }
+    
+    # stop sending STDOUT to scalar
+    append_page('close(select(pop(@Template::PSP::oldfh)));' . "\n");
+  }
 }
 
 # tag_ is called when the HTML tokenizer encounters the
 # /tag.  The function finishes creating the Perl subroutine
 # needed for processing the tag.
 
-sub tag_ {
-    append_page('}' . "\n");
-
-    # add this tag to %global_tags or %export_tags for the page
-    my $tagtype;
-    if ($tagdata{global}) {
-	$tagtype = "Template::PSP::global";
-    } else {
-	$tagtype = $package . "::export";
-        append_page("\$" . $package . "::" . 'custom_tags{' . $tagdata{name} . '}', '=',  '"' . $package . '::' . $tagdata{name} . '";' . "\n");
-        if ($tagdata{body}) {
-	    append_page("\$" . $package . "::" . 'custom_tags{' . $tagdata{name} . '_}', '=',  '"' . $package . '::' . $tagdata{name} . '_";' . "\n");
-        }
+sub tag_
+{
+  append_page('}' . "\n");
+  
+  # add this tag to %global_tags or %export_tags for the page
+  my $tagtype;
+  if ($tagdata{global})
+  {
+    $tagtype = "Template::PSP::global";
+  }
+  else
+  {
+    $tagtype = $package . "::export";
+    append_page("\$" . $package . "::" . 'custom_tags{' . $tagdata{name} . '}', '=',  '"' . $package . '::' . $tagdata{name} . '";' . "\n");
+    if ($tagdata{body})
+    {
+      append_page("\$" . $package . "::" . 'custom_tags{' . $tagdata{name} . '_}', '=',  '"' . $package . '::' . $tagdata{name} . '_";' . "\n");
     }
-    append_page("\$" . $tagtype . '_tags{' . $tagdata{name} . '}', '=',  '"' . $package . '::' . $tagdata{name} . '";' . "\n");
-    if ($tagdata{body}) {
-	append_page("\$" . $tagtype . '_tags{' . $tagdata{name} . '_}', '=',  '"' . $package . '::' . $tagdata{name} . '_";' . "\n");
-    }
-
-    eval $tagdata{page};
-    if ($@) {
-	psperror($tagdata{name});
-    }
-
-    # restore the current page that is being built
-    $page = $tagdata{oldpage};
-    undef %tagdata;
+  }
+  append_page("\$" . $tagtype . '_tags{' . $tagdata{name} . '}', '=',  '"' . $package . '::' . $tagdata{name} . '";' . "\n");
+  if ($tagdata{body})
+  {
+    append_page("\$" . $tagtype . '_tags{' . $tagdata{name} . '_}', '=',  '"' . $package . '::' . $tagdata{name} . '_";' . "\n");
+  }
+  
+  eval $tagdata{page};
+  if ($@)
+  {
+    psperror($tagdata{name});
+  }
+  
+  # restore the current page that is being built
+  $page = $tagdata{oldpage};
+  undef %tagdata;
 }
 
-sub handler {
-    my ($attr) = @_;
-
-    $handlerflag++;
-
-    $tagdata{type} = $attr->{type};
-    $tagdata{oldpage} = $page;
-    $page = \$tagdata{page};
-
-    append_page("no strict 'refs';\n");
-    append_page('sub {' . "\n");
-    append_page('my $data = shift;' . "\n");
-    append_page('my $row = shift;' . "\n");
-    append_page('my $fetch = shift;' . "\n");
-    
-    perl();
+sub handler
+{
+  my ($attr) = @_;
+  
+  $handlerflag++;
+  
+  $tagdata{type} = $attr->{type};
+  $tagdata{oldpage} = $page;
+  $page = \$tagdata{page};
+  
+  append_page("no strict 'refs';\n");
+  append_page('sub {' . "\n");
+  append_page('my $data = shift;' . "\n");
+  append_page('my $row = shift;' . "\n");
+  append_page('my $fetch = shift;' . "\n");
+  
+  perl();
 }
 
-sub handler_ {
-    perl_();
-    append_page('}' . "\n");
-    $type{$tagdata{type}} = eval $tagdata{page};
-    if ($@) {
-	psperror($tagdata{type});
-    }
-    $page = $tagdata{oldpage};
-    undef %tagdata;
-    $handlerflag--;
+sub handler_
+{
+  perl_();
+  append_page('}' . "\n");
+  $type{$tagdata{type}} = eval $tagdata{page};
+  if ($@)
+  {
+    psperror($tagdata{type});
+  }
+  $page = $tagdata{oldpage};
+  undef %tagdata;
+  $handlerflag--;
 }
 
-sub return {
-    append_page("return;\n");
+sub return
+{
+  append_page("return;\n");
 }
 
 sub return_ {};
@@ -512,51 +596,62 @@ sub return_ {};
 # these special tags must be written in Perl and
 # cannot use the TAG tag.
 
-sub loop {
-    my ($attr) = @_;
+sub loop
+{
+  my ($attr) = @_;
 
-    my $name = $attr->{name} || "count";
-    my $from = $attr->{from} || "1" ;
-    my $to   = $attr->{to};
-    my $step = $attr->{step} || "1";
-    my $cond = $attr->{cond};
-    my $list = $attr->{list};
+  my $name = $attr->{name} || "count";
+  my $from = $attr->{from} || "1" ;
+  my $to   = $attr->{to};
+  my $step = $attr->{step} || "1";
+  my $cond = $attr->{cond};
+  my $list = $attr->{list};
 
-    append_page("#line $lineno $parsefile\n"); 
-    if ($cond) {
-	append_page("while ($cond) {\n");
-    } elsif ($list) {
-	append_page("foreach my \$$name ($list) {\n");
-    } else {
-        append_page("for (my \$$name = $from; \$$name <= $to; \$$name+=$step) {\n");
-    }
+  append_page("#line $lineno $parsefile\n"); 
+  if ($cond)
+  {
+    append_page("while ($cond) {\n");
+  }
+  elsif ($list)
+  {
+    append_page("foreach my \$$name ($list) {\n");
+  }
+  else
+  {
+    append_page("for (my \$$name = $from; \$$name <= $to; \$$name+=$step) {\n");
+  }
 }
 
-sub loop_ {
-    append_page("}\n");
+sub loop_
+{
+  append_page("}\n");
 }
 
 
-sub if {
-    my ($attr) = @_;
-    append_page("#line $lineno $parsefile\n"); 
-    append_page('if (' . $attr->{cond}. ') {' . "\n");
+sub if
+{
+  my ($attr) = @_;
+  append_page("#line $lineno $parsefile\n"); 
+  append_page('if (' . $attr->{cond}. ') {' . "\n");
 }
 
-sub if_ {
-    append_page("}" . "\n");
+sub if_
+{
+  append_page("}" . "\n");
 }
 
-sub else {
-    append_page('} else {' . "\n");
+sub else
+{
+  append_page('} else {' . "\n");
 }
 
 sub else_ {}
 
-sub elseif {
-    my ($attr) = @_;
-    append_page("#line $lineno $parsefile\n"); 
-    append_page('} elsif (' . $attr->{cond}. ') {' . "\n");
+sub elseif
+{
+  my ($attr) = @_;
+  append_page("#line $lineno $parsefile\n"); 
+  append_page('} elsif (' . $attr->{cond}. ') {' . "\n");
 }
 
 sub elseif_ {}
@@ -566,14 +661,17 @@ sub elseif_ {}
 # modify the way that the script page is built, and
 # therefore cannot be defined with the TAG tag.
 
-sub perl {
-    $perlflag++;
-    append_page("#line $lineno $parsefile\n"); 
+sub perl
+{
+  $perlflag++;
+  append_page("#line $lineno $parsefile\n");
+  append_page('$|++;');
 }
 
-sub perl_ {
-    append_page(";\n");
-    $perlflag--;
+sub perl_
+{
+  append_page(";\n");
+  $perlflag--;
 }
 
 # The <fetch> tag searches the %type hash for a handler.

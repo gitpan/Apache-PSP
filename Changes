@@ -1,16 +1,22 @@
 Revision history for Apache::PSP
 
 0.1  16 Aug 2001
-	- first open source version
+  - first open source version
 
 0.2  01 Apr 2002
-	- updated PSP namespace to Template:PSP
+  - updated PSP namespace to Template:PSP
 
 0.3  03 Apr 2002
-	- first make-able version
-        - removed reliance on File::PathConvert
-        - moved Tags.psp to permanent (?) location
+  - first make-able version
+  - removed reliance on File::PathConvert
+  - moved Tags.psp to permanent (?) location
 
 0.31 O4 Apr 2002
-        - removed 5.6.1-dependent code
-        - downgraded requirement to 5.005
+  - removed 5.6.1-dependent code
+  - downgraded requirement to 5.005
+
+0.4  03 Jun 2002
+  - improved Apache::PSP error handling (red text instead of 500)
+  - reformatted Template::PSP to 2-space-indent Perl style
+  - fixed error in HTML comment display (inadvertently removed HTML comments)
+  
