@@ -42,3 +42,14 @@ Revision history for Apache::PSP
     requests generating a full page
   - improved recovery from in-page fatal errors by causing interpreter 
     to restart after these errors
+  - replaced erroneous reference to HTML::TokeParser with HTML::Parser
+
+0.80  29 Jan 2003
+  - updated include tag to use new abs_path
+  - noticed that 0.7 is being treated as "older" than 0.51,
+    which means that 1.0 will have to be just around the corner...
+    
+0.81  03 Feb 2003
+  - updated %COOKIE hash code to handle url-encoded cookies properly
+
+

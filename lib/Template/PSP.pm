@@ -6,12 +6,12 @@ use strict;
 
 use Carp;
 
-use HTML::TokeParser;
+use HTML::Parser;
 use IO::Scalar;
 use DBI; 
 use vars qw($VERSION);
 
-$VERSION = 0.7;
+$VERSION = 0.81;
 
 # %tags        - list of special HTML tags defined in Template.pm
 # %global_tags - list of HTML tags, accessible by all pages
@@ -304,11 +304,12 @@ sub set_hashes (%%%%%)
  > 1 ? \@{$x} : $$x[0] } ($cgi->param);
   
   # process cookies for this request
+  my $cgi = CGI::Minimal->new();
   my @cookies = split(/; ?/,$ENV{HTTP_COOKIE});
   foreach my $item (@cookies) 
   {
     my ($name, $value) = split('=', $item);
-    $COOKIE{$name} = $value;
+    $COOKIE{$name} = $cgi->url_decode($value);
   }
   
   # leave authorization for another time
@@ -329,7 +330,7 @@ sub set_hashes (%%%%%)
 
 #########################################
 # Template::PSP::Parser
-# used to process psp pages using HTML::TokeParser
+# used to process psp pages using HTML::Parser
 
 sub start
 {
@@ -811,12 +812,7 @@ sub include
   my ($attr) = @_;
  
   my $file     = eval qq{"$attr->{file}"};
-  my $relative = eval qq{"$attr->{relative}" || "$attr->{rel}"};
-  
-  if ($relative)
-  {
-    $file = abs_path("$file");
-  }
+  $file = abs_path($file);
 
   if (! -f $file) 
   {

@@ -7,7 +7,7 @@ use Template::PSP;
 use Apache::Constants qw( :common );
 use vars qw($VERSION);
 
-$VERSION = 0.7;
+$VERSION = 0.81;
 
 sub handler
 {
