@@ -12,7 +12,7 @@ use IO::Scalar;
 use DBI; 
 use vars qw($VERSION);
 
-$VERSION = 0.4;
+$VERSION = 0.51;
 
 # %tags - list of special HTML tags defined in Template.pm
 # %global_tags - list of HTML tags, accessible by all pages
@@ -29,7 +29,7 @@ $VERSION = 0.4;
 
 use vars qw (%tags %global_tags $page $parsefile $frags $outputflag $perlflag
 	     $handlerflag $package %tagdata %Cache %Handler %type $lineno
-	     $top_package $escapeflag
+	     $top_package $escapeflag $space
 	    );
 
 %tags = map {$_ => 1} 
@@ -142,9 +142,9 @@ sub pspload
     
     my $eval =  "package $pkg;\n" .
 		'*getpvar = \&Template::PSP::getpvar;' . "\n" .
-	        '*setpvar = \&PSP::setpvar;' . "\n" .
+	        '*setpvar = \&Template::PSP::setpvar;' . "\n" .
 		'*cleanup = \&Template::PSP::cleanup;' . "\n" .
-		'use VelociGen::VEP;' . "\n" .
+		'use CGI::Minimal;' . "\n" .
 		'use vars qw(%QUERY %CGI %FILENAMES %AUTH %COOKIE);' . "\n";
     
     eval $eval;
@@ -155,7 +155,8 @@ sub pspload
     if ($topflag)
     {
       append_page('$Template::PSP::top_package = ' . $pkg . ";\n");
-      append_page('&VelociGen::VEP::init(*CGI, *COOKIE, *QUERY, *FILENAMES, *AUTH);' . "\n");
+      append_page('my $cgi = CGI::Minimal->new;' . "\n");
+      append_page('%QUERY = map { my $x = [$cgi->param($_)]; $_ => scalar(@{$x}) > 1 ? \@{$x} : $$x[0] } ($cgi->param);' . "\n");
     }
     else
     {
@@ -175,8 +176,10 @@ sub pspload
 				 default_h => [\&default, "text"]
 			       );
     
+    # send unbroken text instead of chunks to improve performance
+    # by reducing the number of function calls 
+    $parser->unbroken_text(1);
     $parser->xml_mode(1);
-#	$parser->strict_names(1);
     
     if (ref($data))
     {
@@ -196,7 +199,7 @@ sub pspload
     append_page("}\n");
     
     $handler = eval $$page;
-    
+        
     if ($@)
     {
       psperror($file);
@@ -282,7 +285,9 @@ sub start
 
   if ($escapeflag || $tagname eq $tagdata{name} || $perlflag)
   {
-    text($text);
+#   text($text);
+    text($space . $text);
+    $space = "";
     return;
   }
 
@@ -309,25 +314,25 @@ sub start
       $s = substr($arg,1,1);
       
       if (($s2 eq '$') ||
-	  (($s2 eq "\\") &&
-	   ($s eq '@') ||
-	   ($s eq '%') ||
-	   ($s eq '&')
-	  )
-	 )
+          (($s2 eq "\\") &&
+           ($s eq '@') ||
+           ($s eq '%') ||
+           ($s eq '&')
+          )
+         )
       {
-	# don't quote because arg is a reference
-	append_page("'$item'", '=>', $arg . ',');
+        # don't quote because arg is a reference
+        append_page("'$item'", '=>', $arg . ',');
       }
       else
       {
-	if ($arg !~ /^@/)
-	{
-	  $arg =~ s/@/\\@/gs;
-	}
-	$arg =~ s/{/\\{/g;
-	$arg =~ s/}/\\}/g;
-	append_page("'$item'", '=>', 'qq{' . $arg . '},');
+        if ($arg !~ /^@/)
+        {
+          $arg =~ s/@/\\@/gs;
+        }
+        $arg =~ s/{/\\{/g;
+        $arg =~ s/}/\\}/g;
+        append_page("'$item'", '=>', 'qq{' . $arg . '},');
       }
     }
     
@@ -335,7 +340,9 @@ sub start
     return;
   }
   
-  text($text);
+# text($text);
+  text($space . $text);
+  $space = "";
   return;
 }
 
@@ -351,7 +358,9 @@ sub end
       ($handlerflag && $tagname ne "handler") ||
       (!$handlerflag && $perlflag && $tagname ne "perl"))
   {
-    text($text);
+#   text($text);
+    text($space . $text);
+    $space = "";
     return;
   }
 
@@ -374,7 +383,9 @@ sub end
     return;
   }
   
-  text($text);
+# text($text);
+  text($space . $text);
+  $space = "";
   return;
 }
 
@@ -385,7 +396,10 @@ sub comment
   my ($text) = @_;
   default($text);
 
-  text($text);
+# text($text);
+  text($space . $text);
+  $space = "";
+  return;
   
   return;
 }
@@ -403,6 +417,7 @@ sub text
 
   if (!$escapeflag && $text =~ /^\s*$/s)
   {
+    $space = $text;
     return;
   }
   if ($perlflag)

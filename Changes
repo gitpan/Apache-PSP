@@ -20,3 +20,18 @@ Revision history for Apache::PSP
   - reformatted Template::PSP to 2-space-indent Perl style
   - fixed error in HTML comment display (inadvertently removed HTML comments)
   
+0.5  23 Oct 2002
+  - extended red-text error handling to include page-load errors
+  - Template::PSP now retains all template formatting including whitespace
+  - %QUERY hash is available courtesy of CGI::Minimal and Scott Kiehn
+  - improved recovery from page-load errors by causing interpreter to restart
+    after these errors
+  - Apache::PSP now declares 404 errors when a file is not found (instead 
+    of red text and 200)
+  - minor bug fixes and reformatting
+  - started base tag POD documentation in Template::PSP
+
+0.51  28 Oct 2002
+  - fixed setpvar bug (thanks Scott)
+  - changed HTML::Parser behavior to add performance (thanks again Scott)
+  

@@ -7,14 +7,21 @@ use Template::PSP;
 use Apache::Constants qw( :common );
 use vars qw($VERSION);
 
-$VERSION = 0.4;
+$VERSION = 0.5;
 
 sub handler
 {
   my $r = shift(@_);
   
+  # check that the file exists
+  unless (-e $r->filename)
+  {
+    return NOT_FOUND;
+  }
+  
   # generate the page code using the provided file
-  my $page_code = Template::PSP::pspload($r->filename);
+  my $page_code;
+  eval { $page_code = Template::PSP::pspload($r->filename, undef, 1); };
   
   if ($page_code)
   {
@@ -35,9 +42,17 @@ sub handler
   }
   else
   {
-    # log the failure and return a server error
+    # send success headers
+    $r->content_type('text/html');
+    $r->send_http_header();
+
+    # log the failure 
     $r->log_reason("Could not load page", $r->filename);
-    return SERVER_ERROR;
+    print qq{<font color="red"><tt>Can't load page. $@</tt></font>\n};
+
+    # terminate this Apache process to avoid intermediate state problems
+    # (temporary until a full cleanup handler is available)
+    $r->child_terminate;
   };
   
   return OK;
