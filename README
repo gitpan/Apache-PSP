@@ -7,6 +7,6 @@ provide shortcuts to program functions.
 Perl Server Pages are explored in more detail in Chapter 12 of Perl for the Web
 (New Riders 2001).
 
-Copyright (c) 2002 Chris Radcliff. All rights reserved. This program is free
-software; you can redistribute it and/or modify it under the same terms as Perl
-itself.
+Copyright (c) 2002-2004 Chris Radcliff. All rights reserved. This program is
+free software; you can redistribute it and/or modify it under the same terms 
+as Perl itself.

@@ -2,7 +2,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile(
     'NAME'       => 'Apache::PSP',
-    'VERSION'    => '0.8',
+    'VERSION'    => '1.00',
     'PREREQ_PM'	 => {
                      'Apache::Constants' => 0.1,
                      'IO::Scalar'        => 2.1,

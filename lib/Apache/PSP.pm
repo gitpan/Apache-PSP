@@ -3,11 +3,12 @@ package Apache::PSP;
 require 5.005;
 
 use strict;
+
 use Template::PSP;
 use Apache::Constants qw( :common );
 use vars qw($VERSION);
 
-$VERSION = 0.81;
+$VERSION = 1.00;
 
 sub handler
 {

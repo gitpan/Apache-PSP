@@ -11,7 +11,7 @@ use IO::Scalar;
 use DBI; 
 use vars qw($VERSION);
 
-$VERSION = 0.81;
+$VERSION = 1.00;
 
 # %tags        - list of special HTML tags defined in Template.pm
 # %global_tags - list of HTML tags, accessible by all pages
@@ -300,11 +300,27 @@ sub set_hashes (%%%%%)
   
   # fill %QUERY with query values
   my $cgi = CGI::Minimal->new();
-  %QUERY = map { my $x = [$cgi->param($_)]; $_ => scalar(@{$x})
- > 1 ? \@{$x} : $$x[0] } ($cgi->param);
+#  %QUERY = map { my $x = [$cgi->param($_)]; $_ => scalar(@{$x}) > 1 ? \@{$x} : $$x[0] } ($cgi->param);
+  # canonically-correct (and possibly temporary) expansion
+  %QUERY = ();
+  my @params = $cgi->param();
+  foreach my $p (@params)
+  {
+    my @items = $cgi->param($p);
+    if (scalar(@items) > 1)
+    {
+      $QUERY{$p} = \@items;
+    }
+    else
+    {
+      $QUERY{$p} = $items[0];
+    }
+  }
+
   
   # process cookies for this request
   my $cgi = CGI::Minimal->new();
+  %COOKIE = ();
   my @cookies = split(/; ?/,$ENV{HTTP_COOKIE});
   foreach my $item (@cookies) 
   {
@@ -519,7 +535,7 @@ sub tag
     push(@attrs, "body");
   }
   $tagdata{global} = $attr->{global};
-  $tagdata{name} = $attr->{name};
+  $tagdata{name} = lc($attr->{name});
   $tagdata{oldpage} = $page;
   $page = \$tagdata{page};
 
@@ -725,6 +741,34 @@ sub elseif
 
 sub elseif_ {}
 
+# autoloop works with the autoform tags
+
+sub autoloop
+{
+  my ($attr) = @_;
+
+  my $name = $attr->{name} || "count";
+
+  append_page("#line $lineno $parsefile\n"); 
+  
+  # save the current autofill pvar
+  append_page("my \$af = getpvar('autofilldata');\n");
+  append_page("setpvar('autofilldata_save', \$af);\n");
+  append_page("\n");
+  append_page("foreach my \$item (\@{\$af->{$name}})\n");
+  append_page("{\n");
+  append_page("  setpvar('autofilldata', \$item);\n");
+}
+
+sub autoloop_
+{
+  append_page("}\n");
+  
+  # revive the previous autofill pvar
+  append_page("setpvar('autofilldata', getpvar('autofilldata_save');\n");
+}
+
+
 
 # The <perl>, </perl> tags are special as well.  They
 # modify the way that the script page is built, and
@@ -789,12 +833,15 @@ sub fetch_ {
     append_page("}\n");
 }
 
-sub output {
+sub output 
+{
     $outputflag++;
 }
 
-sub output_ {
-    $outputflag--;
+sub output_ 
+{
+  $outputflag--;
+  $outputflag = 0 if $outputflag < 0;  
 }
 
 sub pspescape 
@@ -805,6 +852,7 @@ sub pspescape
 sub pspescape_ 
 {
   $escapeflag--;
+  $escapeflag = 0 if $escapeflag < 0;  
 }
 
 sub include 
@@ -828,20 +876,31 @@ sub include
 sub include_ {}
 
 # load the rest of the tags
-my $tags_file;
-
-foreach my $path (@INC)
+foreach my $filename qw(Tags.psp autoform.psp)
 {
-  my $test = $path . "/Template/PSP/Tags.psp";
+  my $tags_file;
   
-  if (-e $test)
+  foreach my $path (@INC)
   {
-    $tags_file = $test;
-    last;
+    my $test = $path . "/Template/PSP/$filename";
+    
+    if (-e $test)
+    {
+      $tags_file = $test;
+      last;
+    }
+  }
+  
+  if ($tags_file)
+  {
+    eval { pspload($tags_file, "Template::PSP"); };
+    if ($@)
+    {
+      warn "WARNING: Can't load optional tags from $tags_file. " .
+           "Some global tags may not be available.\n";
+    }
   }
 }
-
-pspload($tags_file, "Template::PSP");
 
 #########################################
 # MISC FUNCTIONS

@@ -52,4 +52,14 @@ Revision history for Apache::PSP
 0.81  03 Feb 2003
   - updated %COOKIE hash code to handle url-encoded cookies properly
 
+0.82  22 Apr 2003
+  - special non-CGI::Minimal version for Charles Cowdrick
 
+0.91  25 Sep 2003
+  - incorporated site-custom changes into CPAN version
+  - Template::PSP now clears cookies before each request
+
+1.00  19 Mar 2004
+  - <output> and <pspescape> tags handle extra end tags more gracefully
+  - initial support for <autoloop> and autoforms
+  - finally deemed Out Of Beta(tm)
